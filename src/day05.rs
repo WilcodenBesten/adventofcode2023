@@ -1,5 +1,6 @@
 use std::fs::File;
 use std::io::{BufRead, BufReader};
+use std::u128::MAX;
 
 pub fn day05() -> std::io::Result<()> {
     println!("Day 5");
@@ -51,15 +52,50 @@ pub fn day05() -> std::io::Result<()> {
     ];
     let mut locations: Vec<u128> = Vec::new();
 
-    for seed in seeds {
+    for seed in &seeds {
         locations.push(hum_to_loc.lookup(temp_to_hum.lookup(light_to_temp.lookup(
             water_to_light.lookup(
-                fertilizer_to_water.lookup(soil_to_fertilizer.lookup(seed_to_soil.lookup(seed))),
+                fertilizer_to_water.lookup(soil_to_fertilizer.lookup(seed_to_soil.lookup(*seed))),
             ),
         ))));
     }
 
-    println!("Answer 1: {}, 2: {}", locations.iter().min().unwrap(), 0);
+    let answer_one = *locations.iter().min().unwrap();
+    // Part two
+    locations.clear();
+    let mut min_of_each_range: Vec<u128> = Vec::new();
+
+    let mut i: usize = 0;
+    while i < seeds.len() {
+        println!("Range start {}", i);
+        let mut range: Vec<u128> = Vec::from_iter(seeds[i]..seeds[i] + seeds[i + 1]);
+        let mut lowest: u128 = u128::MAX;
+        for seed in &range {
+            lowest = lowest.min(
+                hum_to_loc.lookup(
+                    temp_to_hum.lookup(
+                        light_to_temp.lookup(
+                            water_to_light.lookup(
+                                fertilizer_to_water
+                                    .lookup(soil_to_fertilizer.lookup(seed_to_soil.lookup(*seed))),
+                            ),
+                        ),
+                    ),
+                ),
+            );
+        }
+        min_of_each_range.push(lowest);
+        range.clear();
+        locations.clear();
+        i += 2;
+    }
+    // Only took like an hour LOL
+
+    println!(
+        "Answer 1: {}, 2: {}",
+        answer_one,
+        min_of_each_range.iter().min().unwrap()
+    );
     Ok(())
 }
 
@@ -157,7 +193,7 @@ mod tests {
     }
 
     #[test]
-    fn test_example_1() {
+    fn test_examples() {
         let seed_to_soil = Map{ranges: vec![Range { dest_start: 50, src_start: 98, len: 2 },
                                                  Range { dest_start: 52, src_start: 50, len: 48 }]};
 
@@ -209,6 +245,29 @@ mod tests {
         assert_eq!(locations[1], 43);
         assert_eq!(locations[2], 86);
         assert_eq!(locations[3], 35);
+
+        // Part two
+        locations.clear();
+        let range_one: Vec<u128> = (79..79+14).collect();
+        let range_two: Vec<u128> = (55 ..55+13).collect();
+
+        for seed in range_one {
+            locations.push(hum_to_loc.lookup(temp_to_hum.lookup(light_to_temp.lookup(
+                water_to_light.lookup(
+                    fertilizer_to_water.lookup(soil_to_fertilizer.lookup(seed_to_soil.lookup(seed))),
+                ),
+            ))));
+        }
+
+        for seed in range_two {
+            locations.push(hum_to_loc.lookup(temp_to_hum.lookup(light_to_temp.lookup(
+                water_to_light.lookup(
+                    fertilizer_to_water.lookup(soil_to_fertilizer.lookup(seed_to_soil.lookup(seed))),
+                ),
+            ))));
+        }
+        
+        assert_eq!(locations.iter().min().unwrap(), &46u128);
 
     }
 
