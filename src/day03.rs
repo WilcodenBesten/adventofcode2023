@@ -1,5 +1,7 @@
+use core::num;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
+use std::usize;
 
 pub fn day03() -> std::io::Result<()> {
     println!("Day 3");
@@ -8,256 +10,372 @@ pub fn day03() -> std::io::Result<()> {
     let reader = BufReader::new(file);
 
     let mut answer_one: usize = 0;
-    let mut answer_two: i32 = 0;
+    let mut answer_two: usize = 0;
 
-    let mut prev_part_line = Line {
-        numbers: vec![],
-        numbers_start: vec![],
-        numbers_len: vec![],
-        numbers_is_adjacent: vec![],
-        symbols_indexes: vec![],
-    };
+    let mut lines: Vec<PartLine> = Vec::new();
+    let mut sum: usize = 0;
 
     for (_index, line) in reader.lines().enumerate() {
         let actual_line = line.unwrap();
 
-        let mut next_part_line = parse_line(&actual_line);
-        next_part_line.set_adjacent();
-
-        next_part_line.set_adjacent_compared_to(&prev_part_line);
-
-        prev_part_line.set_adjacent_compared_to(&next_part_line);
-
-        answer_one += prev_part_line.get_sum();
-
-        prev_part_line = next_part_line;
+        lines.push(parse(&actual_line));
     }
-    answer_one += prev_part_line.get_sum();
+
+    // Part one
+    for i in 0..lines.len() {
+        let mut line_sum: usize = 0;
+
+        for y in 0..lines[i].parts.len() {
+            let prev_part = if y > 0 {
+                Some(&lines[i].parts[y - 1])
+            } else {
+                None
+            };
+            let next_part = if y < lines[i].parts.len() - 1 {
+                Some(&lines[i].parts[y + 1])
+            } else {
+                None
+            };
+
+            let current_part = &lines[i].parts[y];
+
+            // Check on same line
+            if current_part.is_symbol {
+                continue;
+            }
+
+            if let Some(prev_val) = prev_part {
+                if prev_val.is_symbol && current_part.is_adjacent(prev_val) {
+                    line_sum += current_part.value;
+                }
+            }
+
+            if let Some(next_val) = next_part {
+                if next_val.is_symbol && current_part.is_adjacent(next_val) {
+                    line_sum += current_part.value;
+                }
+            }
+        }
+
+        // Check against prev and next line
+        let prev_line = if i > 0 { Some(&lines[i - 1]) } else { None };
+        let next_line = if i < lines.len() - 1 {
+            Some(&lines[i + 1])
+        } else {
+            None
+        };
+
+        for part in &lines[i].parts {
+            if part.is_symbol {
+                continue;
+            }
+
+            if let Some(prev) = prev_line {
+                for prev_part in &prev.parts {
+                    if prev_part.is_symbol && part.is_adjacent(prev_part) {
+                        line_sum += part.value;
+                    }
+                }
+            }
+
+            if let Some(next) = next_line {
+                for next_part in &next.parts {
+                    if next_part.is_symbol && part.is_adjacent(next_part) {
+                        line_sum += part.value;
+                    }
+                }
+            }
+        }
+
+        sum += line_sum;
+    }
+    answer_one = sum;
+    sum = 0;
+
+    // Part two
+    for i in 0..lines.len() {
+        let mut matches: Vec<usize> = Vec::new();
+
+        let prev_line = if i > 0 { Some(&lines[i - 1]) } else { None };
+        let next_line = if i < lines.len() - 1 {
+            Some(&lines[i + 1])
+        } else {
+            None
+        };
+
+        for y in 0..lines[i].parts.len() {
+            let prev = if y > 0 {
+                Some(&lines[i].parts[y - 1])
+            } else {
+                None
+            };
+            let next = if y < lines[i].parts.len() - 1 {
+                Some(&lines[i].parts[y + 1])
+            } else {
+                None
+            };
+
+            let current_part = &lines[i].parts[y];
+
+            if !current_part.is_symbol || !current_part.is_gear {
+                continue;
+            }
+
+            // Check on same line against previous part
+            if let Some(prev) = prev {
+                if !prev.is_symbol && current_part.is_adjacent(prev) {
+                    matches.push(prev.value);
+                }
+            }
+
+            // Check on same line against next part
+            if let Some(next) = next {
+                if !next.is_symbol && current_part.is_adjacent(next) {
+                    matches.push(next.value);
+                }
+            }
+
+            // Check on previous line against all parts
+            if let Some(prev) = prev_line {
+                for prev_part in &prev.parts {
+                    if !prev_part.is_symbol && current_part.is_adjacent(prev_part) {
+                        matches.push(prev_part.value);
+                    }
+                }
+            }
+
+            // Check on next line against all parts
+            if let Some(next) = next_line {
+                for next_part in &next.parts {
+                    if !next_part.is_symbol && current_part.is_adjacent(next_part) {
+                        matches.push(next_part.value);
+                    }
+                }
+            }
+
+            if matches.len() > 1 {
+                sum += matches[0] * matches[1];
+            }
+            matches.clear();
+        }
+    }
+    answer_two = sum;
 
     println!("Answer 1: {}, 2: {}", answer_one, answer_two);
     Ok(())
 }
 
+#[derive(Debug, PartialEq, Clone, Copy)]
+struct Part {
+    start: usize,
+    size: usize,
+    value: usize,
+    is_symbol: bool,
+    is_gear: bool,
+}
+
+impl Part {
+    fn is_adjacent(self, other: &Part) -> bool {
+        if other.start + 1 == self.start {
+            /*
+            .123.
+            *... */
+            return true;
+        } else if other.start == self.start + 1 {
+            return true;
+        } else if other.start >= self.start && other.start <= self.start + self.size {
+            /*
+            .123.
+            ..*. */
+            return true;
+        } else if self.start >= other.start && self.start <= other.start + other.size {
+            return true;
+        } else if other.start == self.start + self.size {
+            /*
+            .123.
+            ....* */
+            return true;
+        } else if other.start + other.size == self.start {
+            return true;
+        }
+        return false;
+    }
+}
+
 #[derive(Debug, PartialEq)]
-struct Line {
-    numbers: Vec<usize>,
-    numbers_start: Vec<usize>,
-    numbers_len: Vec<usize>,
-    numbers_is_adjacent: Vec<bool>,
-    symbols_indexes: Vec<usize>,
+struct PartLine {
+    parts: Vec<Part>,
 }
 
-impl Line {
-    fn get_sum(&self) -> usize {
-        let mut sum: usize = 0;
-        for (index, number) in self.numbers.iter().enumerate() {
-            if *self.numbers_is_adjacent.get(index).unwrap() {
-                sum += number;
-            }
-        }
-        return sum;
-    }
-
-    fn set_adjacent(&mut self) {
-        if !self.symbols_indexes.is_empty() && !self.numbers.is_empty() {
-            for symbol_index in self.symbols_indexes.iter() {
-                for (list_index, number_start) in self.numbers_start.iter().enumerate() {
-                    if number_start + self.numbers_len.get(list_index).unwrap()
-                        == *symbol_index
-                    {
-                        // Verify: 123*
-                        self.numbers_is_adjacent[list_index] = true;
-                    } else if *symbol_index + 1 == *self.numbers_start.get(list_index).unwrap() {
-                        // Verify: *123
-                        self.numbers_is_adjacent[list_index] = true;
-                    }
-                }
-            }
-        }
-    }
-
-    // Other is the line below our line
-    fn set_adjacent_compared_to(&mut self, other: &Line) {
-        if !other.symbols_indexes.is_empty() {
-            for symbol_index in other.symbols_indexes.iter() {
-                for (list_index, number_start) in self.numbers_start.iter().enumerate() {
-                    if *symbol_index + 1 == *number_start {
-                        /*
-                        .123.
-                        *... */
-                        self.numbers_is_adjacent[list_index] = true;
-                    } else if *symbol_index >= *self.numbers_start.get(list_index).unwrap()
-                        && *symbol_index
-                            <= self.numbers_start.get(list_index).unwrap()
-                                + self.numbers_len.get(list_index).unwrap()
-                    {
-                        /*
-                        .123.
-                        ..*. */
-                        self.numbers_is_adjacent[list_index] = true;
-                    } else if *symbol_index
-                        == self.numbers_start.get(list_index).unwrap()
-                            + self.numbers_len.get(list_index).unwrap()
-                    {
-                        /*
-                        .123.
-                        ....* */
-                        self.numbers_is_adjacent[list_index] = true;
-                    }
-                }
-            }
-        }
-    }
-}
-
-fn parse_line(input: &str) -> Line {
-    let mut result = Line {
-        numbers: vec![],
-        numbers_start: vec![],
-        numbers_len: vec![],
-        numbers_is_adjacent: vec![],
-        symbols_indexes: vec![],
-    };
+fn parse(input: &str) -> PartLine {
+    let mut part_line: PartLine = PartLine { parts: Vec::new() };
 
     let mut number_as_string: String = "".to_owned();
+    let mut start_index: usize = 0;
 
     for (index, character) in input.chars().enumerate() {
         let mut do_parse_number = false;
+        let mut push_symbol = false;
 
         if character == '.' {
             if !number_as_string.is_empty() {
                 do_parse_number = true;
             }
         } else if character.is_ascii_punctuation() {
-            result.symbols_indexes.push(index);
+            push_symbol = true;
             if !number_as_string.is_empty() {
                 do_parse_number = true;
             }
         } else if character.is_ascii_digit() {
             if number_as_string.is_empty() {
-                result.numbers_start.push(index);
+                start_index = index;
             }
             number_as_string.push(character);
         }
 
         if do_parse_number {
-            result
-                .numbers
-                .push(number_as_string.parse::<usize>().unwrap());
-            result.numbers_len.push(number_as_string.len());
-            result.numbers_is_adjacent.push(false);
+            part_line.parts.push(Part {
+                start: start_index,
+                size: number_as_string.len(),
+                value: number_as_string.parse::<usize>().unwrap(),
+                is_symbol: false,
+                is_gear: false,
+            });
+            start_index = 0;
             number_as_string.clear();
+        }
+        if push_symbol {
+            if character == '*' {
+                part_line.parts.push(Part {
+                    start: index,
+                    size: 1,
+                    value: 0,
+                    is_symbol: true,
+                    is_gear: true,
+                });
+            } else {
+                part_line.parts.push(Part {
+                    start: index,
+                    size: 1,
+                    value: 0,
+                    is_symbol: true,
+                    is_gear: false,
+                });
+            }
         }
     }
 
     if !number_as_string.is_empty() {
-        result
-            .numbers
-            .push(number_as_string.parse::<usize>().unwrap());
-        result.numbers_len.push(number_as_string.len());
-        result.numbers_is_adjacent.push(false);
+        part_line.parts.push(Part {
+            start: start_index,
+            size: number_as_string.len(),
+            value: number_as_string.parse::<usize>().unwrap(),
+            is_symbol: false,
+            is_gear: false,
+        });
     }
 
-    return result;
+    return part_line;
 }
 
 #[rustfmt::skip]
 #[cfg(test)]
 mod tests {
+    use std::vec;
+
     use super::*;
 
     #[test]
-    fn verify_parse_line() {
-        assert_eq!(parse_line("467..114.."), Line{ numbers: vec![467, 114], numbers_start: vec![0, 5], numbers_len: vec![3, 3], numbers_is_adjacent: vec![false, false], symbols_indexes: vec![] });
-        assert_eq!(parse_line("...*......"), Line{ numbers: vec![],         numbers_start: vec![],     numbers_len: vec![],     numbers_is_adjacent: vec![], symbols_indexes: vec![3] });
-        assert_eq!(parse_line("..35..633."), Line{ numbers: vec![35, 633],  numbers_start: vec![2, 6], numbers_len: vec![2, 3], numbers_is_adjacent: vec![false, false], symbols_indexes: vec![] });
-        assert_eq!(parse_line("......#..."), Line{ numbers: vec![],         numbers_start: vec![],     numbers_len: vec![],     numbers_is_adjacent: vec![], symbols_indexes: vec![6] });
-        assert_eq!(parse_line("617*......"), Line{ numbers: vec![617],      numbers_start: vec![0],    numbers_len: vec![3],    numbers_is_adjacent: vec![false], symbols_indexes: vec![3] });
-        assert_eq!(parse_line(".....+.58."), Line{ numbers: vec![58],       numbers_start: vec![7],    numbers_len: vec![2],    numbers_is_adjacent: vec![false], symbols_indexes: vec![5] });
-        assert_eq!(parse_line("..592....."), Line{ numbers: vec![592],      numbers_start: vec![2],    numbers_len: vec![3],    numbers_is_adjacent: vec![false], symbols_indexes: vec![] });
-        assert_eq!(parse_line("......755."), Line{ numbers: vec![755],      numbers_start: vec![6],    numbers_len: vec![3],    numbers_is_adjacent: vec![false], symbols_indexes: vec![] });
-        assert_eq!(parse_line("...$.*...."), Line{ numbers: vec![],         numbers_start: vec![],     numbers_len: vec![],     numbers_is_adjacent: vec![], symbols_indexes: vec![3,5] });
-        assert_eq!(parse_line(".664.598.."), Line{ numbers: vec![664, 598], numbers_start: vec![1,5],  numbers_len: vec![3, 3], numbers_is_adjacent: vec![false, false], symbols_indexes: vec![] });
-        assert_eq!(parse_line(".................................................324.663............775...290=.301...............=...15........=....780..................562"), 
-                   Line{ numbers: vec![324, 663, 775, 290, 301, 15, 780, 562], 
-                        numbers_start: vec![49,53, 68,74,79, 101, 116, 137],  
-                        numbers_len: vec![3, 3, 3, 3, 3, 2, 3, 3], 
-                        numbers_is_adjacent: vec![false, false, false, false, false, false, false, false], 
-                        symbols_indexes: vec![77, 97,111] });
+    fn test_parse() {
+        assert_eq!(parse("467..114.."), PartLine{parts: vec![Part{start: 0, size: 3, value: 467, is_symbol: false, is_gear: false}, 
+                                                             Part{start: 5, size: 3, value: 114, is_symbol: false, is_gear: false}]});
+        assert_eq!(parse("...*......"), PartLine{parts: vec![Part{start: 3, size: 1, value: 0, is_symbol: true, is_gear: true}]});
+        assert_eq!(parse("..35..633."), PartLine{parts: vec![Part{start: 2, size: 2, value: 35, is_symbol: false, is_gear: false}, 
+                                                             Part{start: 6, size: 3, value: 633, is_symbol: false, is_gear: false}]});
+        assert_eq!(parse("......#..."), PartLine{parts: vec![Part{start: 6, size: 1, value: 0, is_symbol: true, is_gear: false}]});
+        assert_eq!(parse("617*......"), PartLine{parts: vec![Part{start: 0, size: 3, value: 617, is_symbol: false, is_gear: false}, 
+                                                             Part{start: 3, size: 1, value: 0, is_symbol: true, is_gear: true}]});
+        assert_eq!(parse(".....+.58."), PartLine{parts: vec![Part{start: 5, size: 1, value: 0, is_symbol: true, is_gear: false},
+                                                             Part{start: 7, size: 2, value: 58, is_symbol: false, is_gear: false}]});
+        assert_eq!(parse("..592....."), PartLine{parts: vec![Part{start: 2, size: 3, value: 592, is_symbol: false, is_gear: false}]});
+        assert_eq!(parse("......755."), PartLine{parts: vec![Part{start: 6, size: 3, value: 755, is_symbol: false, is_gear: false}]});
+        assert_eq!(parse("...$.*...."), PartLine{parts: vec![Part{start: 3, size: 1, value: 0, is_symbol: true, is_gear: false},
+                                                             Part{start: 5, size: 1, value: 0, is_symbol: true, is_gear: true}]});
+        assert_eq!(parse(".664.598.."), PartLine{parts: vec![Part{start: 1, size: 3, value: 664, is_symbol: false, is_gear: false},
+                                                             Part{start: 5, size: 3, value: 598, is_symbol: false, is_gear: false}]});
+        assert_eq!(parse(".................................................324.663............775...290=.301...............=...15........=....780..................562"),
+                   PartLine{parts: vec![
+                        Part{start: 49, size: 3, value: 324, is_symbol: false, is_gear: false},
+                        Part{start: 53, size: 3, value: 663, is_symbol: false, is_gear: false},
+                        Part{start: 68, size: 3, value: 775, is_symbol: false, is_gear: false},
+                        Part{start: 74, size: 3, value: 290, is_symbol: false, is_gear: false},
+                        Part{start: 77, size: 1, value: 0, is_symbol: true, is_gear: false},
+                        Part{start: 79, size: 3, value: 301, is_symbol: false, is_gear: false},
+                        Part{start: 97, size: 1, value: 0, is_symbol: true, is_gear: false},
+                        Part{start: 101, size: 2, value: 15, is_symbol: false, is_gear: false},
+                        Part{start: 111, size: 1, value: 0, is_symbol: true, is_gear: false},
+                        Part{start: 116, size: 3, value: 780, is_symbol: false, is_gear: false},
+                        Part{start: 137, size: 3, value: 562, is_symbol: false, is_gear: false},
+                   ]});
+        assert_eq!(parse("246*637"), PartLine{parts: vec![Part {start: 0, size: 3, value: 246, is_symbol: false, is_gear: false},
+                                                          Part {start: 3, size: 1, value: 0, is_symbol: true, is_gear: true},
+                                                          Part {start: 4, size: 3, value: 637, is_symbol: false, is_gear: false}]});
+
     }
 
     #[test]
-    fn verify_get_sum() {
-        assert_eq!(Line{ numbers: vec![100, 200], numbers_start: vec![0, 5], numbers_len: vec![3, 3], numbers_is_adjacent: vec![false, false], symbols_indexes: vec![] }.get_sum(), 0);
-        assert_eq!(Line{ numbers: vec![100, 200], numbers_start: vec![0, 5], numbers_len: vec![3, 3], numbers_is_adjacent: vec![true, false], symbols_indexes: vec![] }.get_sum(), 100);
-        assert_eq!(Line{ numbers: vec![100, 200], numbers_start: vec![0, 5], numbers_len: vec![3, 3], numbers_is_adjacent: vec![false, true], symbols_indexes: vec![] }.get_sum(), 200);
-        assert_eq!(Line{ numbers: vec![100, 200], numbers_start: vec![0, 5], numbers_len: vec![3, 3], numbers_is_adjacent: vec![true, true], symbols_indexes: vec![] }.get_sum(), 300);
-    }
+    fn test_line_is_adjacent() {
+        // ..467..
+        let number = Part {start: 2, size: 3, value: 467, is_symbol: false, is_gear: false };
+       
+        // *......
+        let mut symbol = Part {start: 0, size: 1, value: 0, is_symbol: true, is_gear: true };
+        assert_eq!(number.is_adjacent(&symbol), false);
+        // .*.....
+        symbol.start += 1;
+        assert_eq!(number.is_adjacent(&symbol), true);
+        // ..*....
+        symbol.start += 1;
+        assert_eq!(number.is_adjacent(&symbol), true);
+        // ...*...
+        symbol.start += 1;
+        assert_eq!(number.is_adjacent(&symbol), true);
+        // ....*..
+        symbol.start += 1;
+        assert_eq!(number.is_adjacent(&symbol), true);
+        // .....*.
+        symbol.start += 1;
+        assert_eq!(number.is_adjacent(&symbol), true);
+        // ......*
+        symbol.start += 1;
+        assert_eq!(number.is_adjacent(&symbol), false);
 
-    #[test]
-    fn verify_line_set_adjacent() {
-        let mut line = parse_line("467.");
-        line.set_adjacent();
+        // 246*637
+        let first = Part {start: 0, size: 3, value: 246, is_symbol: false, is_gear: false};
+        let gear = Part {start: 3, size: 1, value: 0, is_symbol: true, is_gear: true};
+        let second = Part {start: 4, size: 3, value: 637, is_symbol: false, is_gear: false};
+        assert!(first.is_adjacent(&gear));
+        assert!(second.is_adjacent(&gear));
 
-        assert_eq!(line.numbers_is_adjacent, vec![false]);
-        
-        let mut line = parse_line("617*.");
-        line.set_adjacent();
+        let number_467 = Part {start: 0, size: 3, value: 467, is_symbol: false, is_gear: false }; 
+        let gear = Part {start: 3, size: 1, value: 0, is_symbol: true, is_gear: true };
+        assert_eq!(number_467.is_adjacent(&gear), true);
+        assert_eq!(gear.is_adjacent(&number_467), true);
 
-        assert_eq!(line.numbers_is_adjacent, vec![true]);
+        let number_69 = Part {start: 0, size: 2, value: 69, is_symbol: false, is_gear: false }; 
+        let number_973 = Part {start: 0, size: 3, value: 973, is_symbol: false, is_gear: false }; 
+        let gear = Part {start: 0, size: 1, value: 0, is_symbol: true, is_gear: true };
+        assert_eq!(number_69.is_adjacent(&gear), true);
+        assert_eq!(gear.is_adjacent(&number_69), true);
+        assert_eq!(number_973.is_adjacent(&gear), true);
+        assert_eq!(gear.is_adjacent(&number_973), true);
 
-        let mut line = parse_line("*617.");
-        line.set_adjacent();
+        let number_635 = Part {start: 127, size: 3, value: 635, is_symbol: false, is_gear: false };
+        let number_168 = Part {start: 127, size: 3, value: 168, is_symbol: false, is_gear: false };
+        let gear = Part{start: 129, size: 1, value: 0, is_symbol: true, is_gear: true};
+        assert_eq!(gear.is_adjacent(&number_635), true);
+        assert_eq!(gear.is_adjacent(&number_168), true);
 
-        assert_eq!(line.numbers_is_adjacent, vec![true]);
-
-        let mut line = parse_line(".................................................324.663............775...290=.301...............=...15........=....780..................562");
-        line.set_adjacent();
-
-        assert_eq!(line.numbers_is_adjacent, vec![false, false, false, true, false, false, false, false]);
-    }
-
-    #[test]
-    fn verify_line_set_adjacent_compared_to() {
-        let mut line = parse_line("..467..");
-        // Not adjacent
-        let line2 = parse_line("*......");
-        let line3 = parse_line("......*");
-
-        line.set_adjacent_compared_to(&line2);
-        assert_eq!(line.numbers_is_adjacent, vec![false]);
-        line.numbers_is_adjacent[0] = false;
-
-        line.set_adjacent_compared_to(&line3);
-        assert_eq!(line.numbers_is_adjacent, vec![false]);
-        line.numbers_is_adjacent[0] = false;
-
-        // Adjacent
-        let line4 = parse_line(".*.....");
-        let line5 = parse_line("..*....");
-        let line6 = parse_line("...*....");
-        let line7 = parse_line("....*..");
-        let line8 = parse_line(".....*.");
-
-        line.set_adjacent_compared_to(&line4);
-        assert_eq!(line.numbers_is_adjacent, vec![true]);
-        line.numbers_is_adjacent[0] = false;
-
-        line.set_adjacent_compared_to(&line5);
-        assert_eq!(line.numbers_is_adjacent, vec![true]);
-        line.numbers_is_adjacent[0] = false;
-
-        line.set_adjacent_compared_to(&line6);
-        assert_eq!(line.numbers_is_adjacent, vec![true]);
-        line.numbers_is_adjacent[0] = false;
-
-        line.set_adjacent_compared_to(&line7);
-        assert_eq!(line.numbers_is_adjacent, vec![true]);
-        line.numbers_is_adjacent[0] = false;
-
-        line.set_adjacent_compared_to(&line8);
-        assert_eq!(line.numbers_is_adjacent, vec![true]);
-        line.numbers_is_adjacent[0] = false;
     }
 
 }
