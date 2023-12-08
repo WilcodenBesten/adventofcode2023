@@ -17,7 +17,10 @@ pub fn day07() -> std::io::Result<()> {
     for (_index, line) in reader.lines().enumerate() {
         let actual_line = line.unwrap();
         hands.push(parse(&actual_line));
-        joker_hands.push(parse(&actual_line));
+
+        let mut jocker_hand = parse(&actual_line);
+        jocker_hand.apply_joker_rule();
+        joker_hands.push(jocker_hand);
     }
 
     hands.sort();
@@ -37,9 +40,7 @@ pub fn day07() -> std::io::Result<()> {
 
 fn parse(line: &str) -> Hand {
     let mut hand = Hand {
-        cards: "".to_owned(),
-        bid: 0,
-        hand_type: HandType::OnePair,
+        ..Default::default()
     };
 
     let mut parts = line.split_ascii_whitespace();
@@ -66,6 +67,18 @@ struct Hand {
     cards: String,
     bid: usize,
     hand_type: HandType,
+    is_jocker_rule: bool,
+}
+
+impl Default for Hand {
+    fn default() -> Self {
+        Hand {
+            cards: "".to_owned(),
+            bid: 0,
+            hand_type: HandType::HighCard,
+            is_jocker_rule: false,
+        }
+    }
 }
 
 fn get_type(cards: &str) -> HandType {
@@ -96,7 +109,6 @@ fn get_type(cards: &str) -> HandType {
             }
         }
     }
-
     return result;
 }
 
@@ -105,9 +117,15 @@ impl Hand {
         if self.hand_type != other.hand_type {
             return self.hand_type > other.hand_type;
         } else {
-            let strengths: Vec<char> = vec![
+            let mut strengths: Vec<char> = vec![
                 'A', 'K', 'Q', 'J', 'T', '9', '8', '7', '6', '5', '4', '3', '2',
             ];
+
+            if self.is_jocker_rule {
+                strengths = vec![
+                    'A', 'K', 'Q', 'T', '9', '8', '7', '6', '5', '4', '3', '2', 'J',
+                ];
+            }
 
             for i in 0..self.cards.len() {
                 let our: char = self.cards.chars().nth(i).unwrap();
@@ -120,6 +138,52 @@ impl Hand {
         }
 
         return false;
+    }
+
+    fn apply_joker_rule(&mut self) {
+        self.is_jocker_rule = true;
+        let nr_jokers = self.cards.matches('J').count();
+        if nr_jokers == 0 {
+            return;
+        }
+        match self.hand_type {
+            HandType::FourKind => self.hand_type = HandType::FiveKind,
+            HandType::ThreeKind => {
+                if nr_jokers == 1 {
+                    self.hand_type = HandType::FourKind;
+                } else if nr_jokers == 3 {
+                    self.hand_type = HandType::FourKind;
+                }
+                // Don't need to check 2 as that would be a full house
+            }
+            HandType::FullHouse => {
+                if nr_jokers >= 2 {
+                    self.hand_type = HandType::FiveKind;
+                }
+            }
+            HandType::TwoPair => {
+                if nr_jokers == 1 {
+                    self.hand_type = HandType::FullHouse;
+                } else if nr_jokers == 2 {
+                    self.hand_type = HandType::FourKind;
+                }
+                // Don't need to check 3 as that would be a full house
+            }
+            HandType::OnePair => {
+                if nr_jokers == 1 {
+                    self.hand_type = HandType::ThreeKind;
+                } else if nr_jokers == 2 {
+                    self.hand_type = HandType::ThreeKind;
+                }
+                // Don't need to check for 3 as that would be a five of a kind
+            }
+            HandType::HighCard => {
+                if nr_jokers == 1 {
+                    self.hand_type = HandType::OnePair;
+                }
+            }
+            HandType::FiveKind => return,
+        }
     }
 }
 
@@ -152,11 +216,11 @@ mod tests {
 
     #[test]
     fn test_parse() {
-        assert_eq!(parse("32T3K 765"), Hand {cards: "32T3K".to_owned(), bid: 765, hand_type: HandType::OnePair});
-        assert_eq!(parse("T55J5 684"), Hand {cards: "T55J5".to_owned(), bid: 684, hand_type: HandType::ThreeKind});
-        assert_eq!(parse("KK677 28",),  Hand {cards: "KK677".to_owned(), bid: 28, hand_type: HandType::TwoPair});
-        assert_eq!(parse("KTJJT 220"), Hand {cards: "KTJJT".to_owned(), bid: 220, hand_type: HandType::TwoPair});
-        assert_eq!(parse("QQQJA 483"), Hand {cards: "QQQJA".to_owned(), bid: 483, hand_type: HandType::ThreeKind});
+        assert_eq!(parse("32T3K 765"), Hand {cards: "32T3K".to_owned(), bid: 765, hand_type: HandType::OnePair, is_jocker_rule: false});
+        assert_eq!(parse("T55J5 684"), Hand {cards: "T55J5".to_owned(), bid: 684, hand_type: HandType::ThreeKind, is_jocker_rule: false});
+        assert_eq!(parse("KK677 28",),  Hand {cards: "KK677".to_owned(), bid: 28, hand_type: HandType::TwoPair, is_jocker_rule: false});
+        assert_eq!(parse("KTJJT 220"), Hand {cards: "KTJJT".to_owned(), bid: 220, hand_type: HandType::TwoPair, is_jocker_rule: false});
+        assert_eq!(parse("QQQJA 483"), Hand {cards: "QQQJA".to_owned(), bid: 483, hand_type: HandType::ThreeKind, is_jocker_rule: false});
     }
 
     #[test]
@@ -170,5 +234,72 @@ mod tests {
         let four_kind_2 = parse("AAAAJ 000");
         assert_eq!(four_kind_1.is_stronger(&four_kind_2), true);
         assert_eq!(four_kind_2.is_stronger(&four_kind_1), false);
+    }
+    #[test]
+    fn test_apply_joker() {
+        let mut high_card = parse("A2345 000");
+        let mut one_pair = parse("AA345 000");
+        let mut two_pair = parse("AA335 000");
+        let mut three = parse("AAA12 000");
+        let mut four = parse("AAAA1 000");
+        let mut five = parse("AAAAA 000");
+        let mut full = parse("AAA22 000");
+        high_card.apply_joker_rule();
+        one_pair.apply_joker_rule();
+        two_pair.apply_joker_rule();
+        three.apply_joker_rule();
+        four.apply_joker_rule();
+        five.apply_joker_rule();
+        full.apply_joker_rule();
+        assert_eq!(high_card.hand_type, HandType::HighCard);
+        assert_eq!(one_pair.hand_type, HandType::OnePair);
+        assert_eq!(two_pair.hand_type, HandType::TwoPair);
+        assert_eq!(three.hand_type, HandType::ThreeKind);
+        assert_eq!(four.hand_type, HandType::FourKind);
+        assert_eq!(five.hand_type, HandType::FiveKind);
+        assert_eq!(full.hand_type, HandType::FullHouse);
+
+        let mut high_card_with_j = parse("A234J 000");
+        let mut one_pair_with_j = parse("AA34J 000");
+        let mut two_pair_with_j = parse("AA33J 000");
+        let mut three_with_j = parse("AAA1J 000");
+        let mut four_with_j = parse("AAAAJ 000");
+        let mut full_with_j = parse("AAAJJ 000");
+        let mut full_with_j2 = parse("AAJJJ 000");
+        high_card_with_j.apply_joker_rule();
+        one_pair_with_j.apply_joker_rule();
+        two_pair_with_j.apply_joker_rule();
+        three_with_j.apply_joker_rule();
+        four_with_j.apply_joker_rule();
+        full_with_j.apply_joker_rule();
+        full_with_j2.apply_joker_rule();
+        assert_eq!(high_card_with_j.hand_type, HandType::OnePair);
+        assert_eq!(one_pair_with_j.hand_type, HandType::ThreeKind);
+        assert_eq!(two_pair_with_j.hand_type, HandType::FullHouse);
+        assert_eq!(three_with_j.hand_type, HandType::FourKind);
+        assert_eq!(four_with_j.hand_type, HandType::FiveKind);
+        assert_eq!(full_with_j.hand_type, HandType::FiveKind);
+        assert_eq!(full_with_j2.hand_type, HandType::FiveKind);
+
+        let mut jokers = parse("JJJJJ, 000");
+        let mut jokers2 = parse("JJJJ1, 000");
+        let mut jokers3 = parse("JJJ21, 000");
+        let mut jokers4 = parse("JJ321, 000");
+        let mut jokers5 = parse("J4321, 000");
+        jokers.apply_joker_rule();
+        jokers2.apply_joker_rule();
+        jokers3.apply_joker_rule();
+        jokers4.apply_joker_rule();
+        jokers5.apply_joker_rule();
+        assert_eq!(jokers.hand_type, HandType::FiveKind);
+        assert_eq!(jokers2.hand_type, HandType::FiveKind);
+        assert_eq!(jokers3.hand_type, HandType::FourKind);
+        assert_eq!(jokers4.hand_type, HandType::ThreeKind);
+        assert_eq!(jokers5.hand_type, HandType::OnePair);
+
+        let mut special = parse("Q2KJJ 000");
+        special.apply_joker_rule();
+        assert_eq!(special.hand_type, HandType::ThreeKind);
+
     }
 }
