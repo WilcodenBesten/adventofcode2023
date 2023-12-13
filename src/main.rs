@@ -30,6 +30,6 @@ fn main() {
     // day05().unwrap();
     // day06().unwrap();
     // day07().unwrap();
-    // day08().unwrap();
-    day09().unwrap();
+    day08().unwrap();
+    // day09().unwrap();
 }
