@@ -7,6 +7,7 @@ use crate::day06::day06;
 use crate::day07::day07;
 use crate::day08::day08;
 use crate::day09::day09;
+use crate::day10::day10;
 
 pub mod day01;
 pub mod day02;
@@ -17,6 +18,7 @@ pub mod day06;
 pub mod day07;
 pub mod day08;
 pub mod day09;
+pub mod day10;
 
 fn main() {
     println!(
@@ -30,6 +32,7 @@ fn main() {
     // day05().unwrap();
     // day06().unwrap();
     // day07().unwrap();
-    day08().unwrap();
+    // day08().unwrap();
     // day09().unwrap();
+    day10().unwrap();
 }
